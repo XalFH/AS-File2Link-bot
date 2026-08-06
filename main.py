@@ -28,12 +28,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Config Details
 API_ID = 32541562
 API_HASH = "e37e4432298d5a5eb4a6e32c18804283"
-BOT_TOKEN = "8932447404:AAEekM9TmMtdX_paFlQfNfrjWegWLOIBzEk"
+BOT_TOKEN = "8932447404:AAFh62pQmAJ9n5H9mNUSNHl2fgjWxPjI_Hs"
 MONGO_URI = "mongodb+srv://aryankumarsha20:CjdV5plwbpvwTTCU@cluster0.3zw5xk8.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 ADMIN_ID = 7006602588
 
 PORT = int(os.environ.get("PORT", 8080))
-# Provided custom render URL fallback
 URL = os.environ.get("RENDER_EXTERNAL_URL", "https://as-file2link-bot.onrender.com").rstrip('/')
 
 # Database Setup
@@ -200,14 +199,19 @@ async def process_media(client: Client, message: Message):
 
     await status_msg.edit_text(text=caption, reply_markup=buttons, disable_web_page_preview=True)
 
-# Application Lifespan Execution
+# Parallel Execution Handler
 async def main():
     await bot.start()
-    logging.info("Pyrogram Bot Client Started!")
+    logging.info("Pyrogram Client Started and Listening for Messages!")
     
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="error")
     server = uvicorn.Server(config)
-    await server.serve()
+    
+    # Run Uvicorn web server asynchronously without blocking Pyrogram event updates
+    await asyncio.gather(
+        server.serve(),
+        asyncio.Event().wait()
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
