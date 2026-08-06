@@ -5,9 +5,10 @@ import random
 import string
 import logging
 import asyncio
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-# Python 3.10+ event loop fix for Pyrogram top-level imports
+# Event loop fix for Pyrogram imports
 try:
     asyncio.get_running_loop()
 except RuntimeError:
@@ -25,7 +26,7 @@ import uvicorn
 # Logging Configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Config Details
+# Credentials & Setup
 API_ID = 32541562
 API_HASH = "e37e4432298d5a5eb4a6e32c18804283"
 BOT_TOKEN = "8932447404:AAFh62pQmAJ9n5H9mNUSNHl2fgjWxPjI_Hs"
@@ -49,10 +50,20 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# FastAPI App
-app = FastAPI(title="Stream Engine")
+# Manage Lifespan properly so Pyrogram & FastAPI run smoothly together
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.info("Starting Pyrogram Bot...")
+    await bot.start()
+    logging.info("Pyrogram Bot Started Successfully & Listening!")
+    yield
+    logging.info("Stopping Pyrogram Bot...")
+    await bot.stop()
 
-# Helper Utilities
+# FastAPI App
+app = FastAPI(title="Stream Engine", lifespan=lifespan)
+
+# Helper Functions
 def humanbytes(size: int) -> str:
     if not size:
         return "0 B"
@@ -90,7 +101,6 @@ async def watch_and_download(file_code: str, request: Request, range: str = Head
     mime_type = getattr(media, "mime_type", "video/mp4")
     file_name = getattr(media, "file_name", "file.mp4")
 
-    # High-Speed HTTP Range Header Parser for Seek Functionality
     start = 0
     end = file_size - 1
 
@@ -173,7 +183,7 @@ async def process_media(client: Client, message: Message):
     file_name = getattr(media, "file_name", "Media_File.mp4")
     file_size = humanbytes(media.file_size)
 
-    # Store file pointer in Mongo
+    # Store file metadata in MongoDB
     await files_db.insert_one({
         "file_code": file_code,
         "chat_id": message.chat.id,
@@ -199,19 +209,5 @@ async def process_media(client: Client, message: Message):
 
     await status_msg.edit_text(text=caption, reply_markup=buttons, disable_web_page_preview=True)
 
-# Parallel Execution Handler
-async def main():
-    await bot.start()
-    logging.info("Pyrogram Client Started and Listening for Messages!")
-    
-    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="error")
-    server = uvicorn.Server(config)
-    
-    # Run Uvicorn web server asynchronously without blocking Pyrogram event updates
-    await asyncio.gather(
-        server.serve(),
-        asyncio.Event().wait()
-    )
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=False)
