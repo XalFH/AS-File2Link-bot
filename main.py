@@ -7,6 +7,12 @@ import logging
 import asyncio
 from typing import AsyncGenerator
 
+# Python 3.10+ event loop fix for Pyrogram top-level imports
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 from pyrogram.errors import FloodWait
@@ -27,7 +33,8 @@ MONGO_URI = "mongodb+srv://aryankumarsha20:CjdV5plwbpvwTTCU@cluster0.3zw5xk8.mon
 ADMIN_ID = 7006602588
 
 PORT = int(os.environ.get("PORT", 8080))
-URL = os.environ.get("RENDER_EXTERNAL_URL", f"http://localhost:{PORT}").rstrip('/')
+# Provided custom render URL fallback
+URL = os.environ.get("RENDER_EXTERNAL_URL", "https://as-file2link-bot.onrender.com").rstrip('/')
 
 # Database Setup
 mongo_client = AsyncIOMotorClient(MONGO_URI)
@@ -35,8 +42,13 @@ db = mongo_client["advance_stream_bot"]
 files_db = db["files"]
 users_db = db["users"]
 
-# Pyrogram Client
-bot = Client("AdvanceStreamBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Pyrogram Client Setup
+bot = Client(
+    "AdvanceStreamBot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
 # FastAPI App
 app = FastAPI(title="Stream Engine")
@@ -51,9 +63,7 @@ def humanbytes(size: int) -> str:
     s = round(size / p, 2)
     return f"{s} {units[i]}"
 
-async def yield_file_chunks(media_msg: Message, start: int, length: int, chunk_size: int = 1024 * 512) -> AsyncGenerator[bytes, None]:
-    offset = start
-    end = start + length - 1
+async def yield_file_chunks(media_msg: Message, start: int, length: int) -> AsyncGenerator[bytes, None]:
     async for chunk in bot.stream_media(media_msg, offset=start, limit=length):
         yield chunk
 
@@ -117,7 +127,7 @@ async def start_cmd(client: Client, message: Message):
     await message.reply_text(
         f"👋 **Hey {message.from_user.first_name}!**\n\n"
         "Send or forward me any **Video, Audio, or File**, and I will generate an **Instant Direct Download & High-Speed Online Stream Link** for you!\n\n"
-        "⚡ *Supported features:* Seeking (Fast Forward), Resume Downloads, Unlimited Speed.",
+        "⚡ *Supported features:* Fast Forward (Seeking), Resume Downloads, High Speed.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⚡ Developer", url="https://t.me/")]
         ])
@@ -190,13 +200,14 @@ async def process_media(client: Client, message: Message):
 
     await status_msg.edit_text(text=caption, reply_markup=buttons, disable_web_page_preview=True)
 
-# Application Lifespan
-async def start_services():
+# Application Lifespan Execution
+async def main():
     await bot.start()
-    logging.info("Pyrogram Client Started!")
+    logging.info("Pyrogram Bot Client Started!")
+    
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="error")
     server = uvicorn.Server(config)
     await server.serve()
 
 if __name__ == "__main__":
-    asyncio.run(start_services())
+    asyncio.run(main())
